@@ -8,55 +8,73 @@ export default function XSSSimulationLab() {
   const [input, setInput] = useState('');
   const [display, setDisplay] = useState('');
   const [isSafeMode, setIsSafeMode] = useState(false); // Default: Unsafe
-  const [victimData, setVictimData] = useState({ cookie: '', localStorage: '' });
+  
+  // State Data Korban
+  const [victimData, setVictimData] = useState({ 
+    cookie: 'RAHASIA_ADMIN_12345', 
+    localStorage: '0xABC_DOMPET_KRIPTO_KEY' 
+  });
 
   // --- EFFECT: Setup Simulasi & Baca URL ---
   useEffect(() => {
-    // 1. SIMULASI: Tanamkan Data Palsu di Browser
-    document.cookie = "session_token=RAHASIA_ADMIN_12345; path=/";
-    localStorage.setItem("user_wallet", "0xABC_DOMPET_KRIPTO_KEY");
-    
-    setVictimData({
-      cookie: "session_token=RAHASIA_ADMIN_12345",
-      localStorage: "0xABC_DOMPET_KRIPTO_KEY"
-    });
+    // 1. SIMULASI: Tanamkan Data Default ke Browser saat load pertama
+    syncToBrowser('RAHASIA_ADMIN_12345', '0xABC_DOMPET_KRIPTO_KEY');
 
     // 2. LOGIKA REFLECTED XSS (BACA URL)
-    // Cek apakah ada parameter '?search=' di URL saat halaman dimuat
     const params = new URLSearchParams(window.location.search);
     const searchParam = params.get('search');
     
     if (searchParam) {
-      // Jika ada, masukkan ke input dan langsung render (Reflected)
       setInput(searchParam);
-      
-      // Catatan: Saat load awal, kita anggap mode sesuai default (Unsafe)
-      // atau bisa ditambahkan logika cek isSafeMode jika ingin persist
       setDisplay(searchParam); 
     }
-  }, []); // Array kosong = hanya jalan sekali saat mount
+  }, []);
 
-  // --- HANDLER: Tombol Render ---
+  // --- HELPER: Sinkronisasi ke Browser Storage ---
+  const syncToBrowser = (cookieVal: string, storageVal: string) => {
+    // Set Cookie (Hanya update value untuk key session_token)
+    document.cookie = `session_token=${cookieVal}; path=/`;
+    // Set LocalStorage
+    localStorage.setItem("user_wallet", storageVal);
+  };
+
+  // --- HANDLER: Edit Data Korban ---
+  const handleVictimDataChange = (field: 'cookie' | 'localStorage', value: string) => {
+    setVictimData(prev => {
+      const newData = { ...prev, [field]: value };
+      // Langsung update storage browser agar real-time
+      if (field === 'cookie') {
+        document.cookie = `session_token=${value}; path=/`;
+      } else {
+        localStorage.setItem("user_wallet", value);
+      }
+      return newData;
+    });
+  };
+
+  const resetVictimData = () => {
+    const defCookie = "RAHASIA_ADMIN_12345";
+    const defStorage = "0xABC_DOMPET_KRIPTO_KEY";
+    setVictimData({ cookie: defCookie, localStorage: defStorage });
+    syncToBrowser(defCookie, defStorage);
+  };
+
+  // --- HANDLER: Tombol Render XSS ---
   const handleSimulate = () => {
     if (isSafeMode) {
-      // MITIGASI: Bersihkan input dari script berbahaya
       const cleanHtml = DOMPurify.sanitize(input);
       setDisplay(cleanHtml);
     } else {
-      // VULNERABLE: Render apa adanya
       setDisplay(input);
     }
   };
 
-  // --- HANDLER: Quick Payload Buttons ---
-  const setPayload = (payload: string) => {
-    setInput(payload);
-  };
+  // --- HANDLER: Quick Payload & Reset ---
+  const setPayload = (payload: string) => setInput(payload);
 
   const clearAll = () => {
     setInput('');
     setDisplay('');
-    // Opsional: Bersihkan URL agar bersih
     window.history.pushState({}, '', window.location.pathname);
   };
 
@@ -93,33 +111,53 @@ export default function XSSSimulationLab() {
       </nav>
 
       {/* --- MAIN CONTENT --- */}
-      <main className="max-w-5xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <main className="max-w-6xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* --- KOLOM KIRI: INFO KORBAN --- */}
+        {/* --- KOLOM KIRI: EDIT DATA KORBAN --- */}
         <div className="lg:col-span-1 space-y-6">
           <div className={`p-6 rounded-2xl border shadow-xl backdrop-blur-sm transition-colors ${isSafeMode ? 'bg-emerald-900/50 border-emerald-700/50' : 'bg-slate-800/50 border-slate-700/50'}`}>
-            <h3 className="text-sm font-bold uppercase tracking-wider mb-4 border-b border-white/10 pb-3 flex items-center gap-2">
-              <span className="text-lg">🕵️</span> Data Korban (Simulasi)
-            </h3>
+            <div className="flex justify-between items-center mb-4 border-b border-white/10 pb-3">
+              <h3 className="text-sm font-bold uppercase tracking-wider flex items-center gap-2">
+                <span className="text-lg">🕵️</span> Data Korban
+              </h3>
+              <button onClick={resetVictimData} className="text-[10px] bg-white/10 hover:bg-white/20 px-2 py-1 rounded transition">
+                Reset Default
+              </button>
+            </div>
             
-            <div className="space-y-4">
+            <div className="space-y-5">
+              {/* COOKIE INPUT */}
               <div>
-                <label className="text-xs font-mono block mb-1 opacity-70">document.cookie</label>
-                <div className="text-xs bg-black/40 p-3 rounded border border-white/10 font-mono break-all text-green-400">
-                  {victimData.cookie || 'Loading...'}
-                </div>
+                <label className="text-xs font-mono block mb-1 opacity-70 flex justify-between">
+                  <span>document.cookie (session_token)</span>
+                  <span className="text-green-400">Editable ✎</span>
+                </label>
+                <input
+                  type="text"
+                  value={victimData.cookie}
+                  onChange={(e) => handleVictimDataChange('cookie', e.target.value)}
+                  className="w-full bg-black/40 p-3 rounded border border-white/10 font-mono text-xs text-green-400 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-all placeholder:text-white/10"
+                />
               </div>
+
+              {/* LOCALSTORAGE INPUT */}
               <div>
-                <label className="text-xs font-mono block mb-1 opacity-70">localStorage</label>
-                <div className="text-xs bg-black/40 p-3 rounded border border-white/10 font-mono break-all text-yellow-400">
-                  {victimData.localStorage || 'Loading...'}
-                </div>
+                <label className="text-xs font-mono block mb-1 opacity-70 flex justify-between">
+                  <span>localStorage (user_wallet)</span>
+                  <span className="text-yellow-400">Editable ✎</span>
+                </label>
+                <input
+                  type="text"
+                  value={victimData.localStorage}
+                  onChange={(e) => handleVictimDataChange('localStorage', e.target.value)}
+                  className="w-full bg-black/40 p-3 rounded border border-white/10 font-mono text-xs text-yellow-400 focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 transition-all placeholder:text-white/10"
+                />
               </div>
             </div>
 
             <div className="mt-6 pt-4 border-t border-white/10">
-              <p className="text-xs leading-relaxed opacity-80">
-                Data di atas tersimpan di browser Anda saat ini. XSS dapat digunakan untuk mencuri data ini jika website rentan.
+              <p className="text-xs leading-relaxed opacity-80 italic">
+                Coba ubah data di atas, lalu jalankan payload <b>Steal Cookie</b>. Alert browser akan menampilkan data baru yang Anda ketik.
               </p>
             </div>
           </div>
@@ -165,14 +203,14 @@ export default function XSSSimulationLab() {
                   className="text-left p-3 bg-black/20 hover:bg-black/40 border border-transparent hover:border-white/20 rounded-lg text-xs font-mono transition group"
                 >
                   <span className="block font-bold mb-1 text-red-400 group-hover:text-red-300">1. Steal Cookie</span>
-                  alert(document.cookie)
+                  <span className="opacity-70">alert(document.cookie)</span>
                 </button>
                 <button 
                   onClick={() => setPayload('<img src=x onerror="document.body.innerHTML=\'<h1>HACKED</h1>\'">')}
                   className="text-left p-3 bg-black/20 hover:bg-black/40 border border-transparent hover:border-white/20 rounded-lg text-xs font-mono transition group"
                 >
                   <span className="block font-bold mb-1 text-yellow-400 group-hover:text-yellow-300">2. Deface Web</span>
-                  body.innerHTML = ...
+                  <span className="opacity-70">body.innerHTML = ...</span>
                 </button>
               </div>
             </div>
@@ -180,18 +218,13 @@ export default function XSSSimulationLab() {
 
           {/* 2. OUTPUT AREA (VULNERABLE) */}
           <div className="relative group">
-            {/* Label Status */}
             <div className={`absolute -top-3 left-6 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-sm z-10 border ${isSafeMode ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-red-600 text-white border-red-700 animate-pulse'}`}>
               {isSafeMode ? '✓ Sanitized Output' : '⚠ Unsafe Render Area'}
             </div>
             
-            {/* Kotak Render */}
             <div className={`bg-white text-slate-900 p-8 rounded-2xl min-h-[180px] shadow-2xl border-4 overflow-hidden break-words transition-all ${isSafeMode ? 'border-emerald-500/50' : 'border-red-500'}`}>
               
               {display ? (
-                // --- INI ADALAH TITIK VULNERABLE ---
-                // dangerouslySetInnerHTML akan merender apapun isi 'display'
-                // Jika Safe Mode ON, isinya sudah dibersihkan. Jika OFF, isinya raw HTML.
                 <div dangerouslySetInnerHTML={{ __html: display }} className="prose max-w-none" />
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
@@ -201,12 +234,11 @@ export default function XSSSimulationLab() {
               )}
             </div>
 
-            {/* Info Teknis Tambahan */}
             {isSafeMode && display && (
                <div className="mt-3 mx-2 p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-lg text-xs text-emerald-200/80 flex gap-2 items-start">
                  <span className="text-lg">🛡️</span>
                  <p>
-                   <strong>Info Keamanan:</strong> Payload berhasil dirender, tetapi tag berbahaya (script/handlers) telah dihapus oleh <code>DOMPurify</code>. Tidak ada eksekusi kode yang terjadi.
+                   <strong>Info Keamanan:</strong> Payload berhasil dirender, tetapi tag berbahaya (script/handlers) telah dihapus oleh <code>DOMPurify</code>.
                  </p>
                </div>
             )}
